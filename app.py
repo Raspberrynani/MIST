@@ -5,11 +5,15 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import io
-import time
 
-st.set_page_config(page_title="🎯 Enhanced Digit Generator", page_icon="✨", layout="centered")
+# Minimal page config
+st.set_page_config(
+    page_title="Digit Generator",
+    page_icon="🔢",
+    layout="centered"
+)
 
-# Your EXISTING model (no changes needed)
+# Lean model definition
 class ConditionalVAE(nn.Module):
     def __init__(self, input_dim=784, hidden_dim=400, latent_dim=20, num_classes=10):
         super(ConditionalVAE, self).__init__()
@@ -53,102 +57,87 @@ def load_model():
         st.error(f"Error loading model: {str(e)}")
         return None, None
 
-def generate_clean_digits(model, digit, device):
-    """OPTIMIZED: Much cleaner output with less noise"""
+def generate_digit_images(model, digit, device):
+    """Generate exactly 5 images of the specified digit"""
     model.eval()
     with torch.no_grad():
-        # REDUCED NOISE PATTERNS for cleaner output
-        clean_patterns = [
-            torch.randn(1, 20, device=device) * 0.5,      # Very clean (50% less noise)
-            torch.randn(1, 20, device=device) * 0.6,      # Clean 
-            torch.randn(1, 20, device=device) * 0.7,      # Slight variation
-            torch.randn(1, 20, device=device) * 0.6 + 0.1, # Clean with shift
-            torch.randn(1, 20, device=device) * 0.5 - 0.1  # Very clean with shift
-        ]
+        # Generate 5 diverse samples
+        z = torch.randn(5, 20, device=device)
+        z = z + torch.randn_like(z) * 0.3  # Add diversity
         
-        images = []
-        for i in range(5):
-            z = clean_patterns[i]
-            label = torch.tensor([digit], device=device)
-            
-            # Generate and clean up the image
-            generated = model.decode(z, label).view(28, 28).cpu().numpy()
-            
-            # POST-PROCESS for cleaner appearance
-            generated = np.clip(generated, 0, 1)  # Ensure valid range
-            generated = (generated > 0.3).astype(float)  # Threshold for cleaner lines
-            
-            images.append(generated)
-        
-        return np.array(images)
+        labels = torch.tensor([digit] * 5, device=device)
+        generated = model.decode(z, labels)
+        generated = generated.view(5, 28, 28)
+        return generated.cpu().numpy()
 
-def create_beautiful_plot(images, digit):
-    """Enhanced visualization with cleaner appearance"""
-    fig, axes = plt.subplots(1, 5, figsize=(13, 2.8))
-    fig.patch.set_facecolor('#f8f9fa')
+def display_images(images, digit):
+    """Display 5 images in a clean grid"""
+    fig, axes = plt.subplots(1, 5, figsize=(10, 2))
+    fig.suptitle(f'Generated Digit: {digit}', fontsize=16, fontweight='bold')
     
     for i, ax in enumerate(axes):
-        # Clean display with high contrast
-        ax.imshow(images[i], cmap='Greys', interpolation='nearest', vmin=0, vmax=1)
-        ax.set_title(f'Sample {i+1}', fontsize=13, fontweight='bold', color='#333', pad=10)
+        ax.imshow(images[i], cmap='gray', interpolation='nearest')
         ax.axis('off')
-        
-        # Add clean border
-        for spine in ax.spines.values():
-            spine.set_visible(True)
-            spine.set_color('#ddd')
-            spine.set_linewidth(1)
     
     plt.tight_layout()
-    plt.subplots_adjust(top=0.82)
-    fig.suptitle(f'✨ Clean Generated Digit: {digit}', fontsize=17, fontweight='bold', color='#333')
-    
     return fig
 
-# CLEAN UI
-st.title("✨ Clean Digit Generator")
-st.markdown("**Optimized for clean, readable digits**")
-
-# Load model
-model, device = load_model()
-if model is None:
-    st.stop()
-
-st.success("✅ Model loaded - Ready to generate clean digits!")
-
-# Simple selection
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    digit = st.selectbox(
-        "🎯 Select digit to generate:",
-        options=list(range(10)),
-        index=0,
-        format_func=lambda x: f"Digit {x} 🔢"
-    )
+def main():
+    # Clean title
+    st.title("Handwritten Digit Generator")
+    st.markdown("Select a digit and generate 5 handwritten samples")
     
-    if st.button(f"✨ Generate Clean {digit}s", type="primary", use_container_width=True):
-        with st.spinner("Creating clean digits..."):
-            time.sleep(0.5)  # Brief pause for effect
+    # Load model
+    model, device = load_model()
+    if model is None:
+        st.stop()
+    
+    # Digit selection - centered and prominent
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        selected_digit = st.selectbox(
+            "Choose digit to generate:",
+            options=list(range(10)),
+            index=0,
+            key="digit_selector"
+        )
+        
+        # Generate button - full width in center column
+        generate_button = st.button(
+            f"Generate 5 images of digit {selected_digit}",
+            type="primary",
+            use_container_width=True
+        )
+    
+    # Generation and display
+    if generate_button:
+        with st.spinner("Generating..."):
+            # Generate 5 images
+            generated_images = generate_digit_images(model, selected_digit, device)
             
-            # Generate with reduced noise
-            images = generate_clean_digits(model, digit, device)
+        # Display results
+        st.success(f"Generated 5 samples of digit {selected_digit}")
         
-        st.success(f"🎉 Generated 5 clean samples of digit {digit}!")
-        
-        # Display with enhanced visualization
-        fig = create_beautiful_plot(images, digit)
+        # Show images
+        fig = display_images(generated_images, selected_digit)
         st.pyplot(fig)
         plt.close()
         
-        # Clean metrics
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.metric("🎯 Digit", digit)
-        with col_b:
-            st.metric("📊 Samples", 5)
-        with col_c:
-            st.metric("✨ Quality", "Clean")
+        # Optional: Individual images in smaller format
+        with st.expander("View individual images"):
+            cols = st.columns(5)
+            for i, col in enumerate(cols):
+                with col:
+                    fig_small, ax = plt.subplots(figsize=(2, 2))
+                    ax.imshow(generated_images[i], cmap='gray')
+                    ax.axis('off')
+                    ax.set_title(f'#{i+1}')
+                    
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png', bbox_inches='tight')
+                    buf.seek(0)
+                    st.image(buf)
+                    plt.close()
 
-# Footer
-st.markdown("---")
-st.markdown("**🧠 Same model • ✨ Cleaner output • 🎯 Better readability**")
+if __name__ == "__main__":
+    main()
